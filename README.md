@@ -1,14 +1,28 @@
-# peeklish
-
-Read English. Peek when needed. 读英文，需要时看一眼。
-
-peeklish 是一个 Chrome 扩展。阅读英文网页时，它只在值得学的短语下加一条淡下划线；鼠标悬停才显示中文。选中单词、短语、句子或段落时，再翻译。默认使用 Chrome 内置的谷歌翻译，在本机完成；也可以接入你自己的 OpenAI Chat Completions 兼容接口。扩展没有服务器。
-
-[![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
-
-<p>
-  <img src="docs/welcome.png" alt="欢迎页：短语下划线和悬停释义" width="720">
+<p align="center">
+  <img src="public/icon/128.png" alt="peeklish" width="96">
 </p>
+
+<h1 align="center">peeklish</h1>
+
+<p align="center">
+  Read English. Peek when needed.<br>
+  读英文，需要时看一眼。
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License: MIT"></a>
+  <img src="https://img.shields.io/badge/Chrome-Extension-4285F4?logo=googlechrome&logoColor=white" alt="Chrome extension">
+</p>
+
+<p align="center">
+  阅读英文网页时，只在值得学的短语下加一条淡下划线。鼠标悬停才显示中文。
+</p>
+
+<p align="center">
+  <img src="docs/hover.png" alt="网页里悬停短语时的释义卡片" width="720">
+</p>
+
+peeklish 是一个 Chrome 扩展。选中单词、短语、句子或段落时，再翻译。默认使用 Chrome 内置的谷歌翻译，在本机完成；也可以接入你自己的 OpenAI Chat Completions 兼容接口。扩展没有服务器。
 
 ## 功能
 
@@ -21,8 +35,8 @@ peeklish 是一个 Chrome 扩展。阅读英文网页时，它只在值得学的
 - 「自定义 AI」可接入兼容 OpenAI Chat Completions 的接口，并提供语法解释和润色。
 - 默认不读取任何网站。只有你在弹窗里启用的来源才会注入阅读脚本。
 
-<p>
-  <img src="docs/hover.png" alt="网页里悬停短语时的释义卡片" width="640">
+<p align="center">
+  <img src="docs/welcome.png" alt="欢迎页：短语下划线和悬停释义" width="520">
 </p>
 
 ## 安装
@@ -40,8 +54,8 @@ peeklish 是一个 Chrome 扩展。阅读英文网页时，它只在值得学的
 
 默认不读取任何网站。在网页里点工具栏图标，打开「在当前网站启用」。浏览器会询问这个网站的访问权限。之后只有这个来源会注入阅读脚本。
 
-<p>
-  <img src="docs/popup.png" alt="工具栏弹窗：站点开关、阅读选项和辅助强度" width="360">
+<p align="center">
+  <img src="docs/popup.png" alt="工具栏弹窗：站点开关、阅读选项和辅助强度" width="320">
 </p>
 
 暂停会立刻去掉本页标注，配置和表达库还在。在 `chrome://`、扩展商店和扩展自己的页面上会显示「当前页面不支持」。
@@ -58,8 +72,8 @@ npx serve demo
 
 默认是「谷歌内置」：Chrome 自带的翻译模型，在本机完成，不需要任何配置，第一次使用会下载语言包。这台 Chrome 不支持时，弹窗会提示升级或改用自定义 AI。选择「谷歌内置」时，设置页不显示大模型配置，卡片里也不显示「语法」和「润色」。
 
-<p>
-  <img src="docs/translate.png" alt="翻译服务设置：谷歌内置与自定义 AI" width="720">
+<p align="center">
+  <img src="docs/translate.png" alt="翻译服务设置：谷歌内置与自定义 AI" width="560">
 </p>
 
 需要语法解释和润色时，改用「自定义 AI」：
