@@ -103,6 +103,13 @@ body {
   margin-top: -6px;
 }
 
+.consent-row {
+  display: grid;
+  gap: 8px;
+}
+
+.consent-row .btn { width: 100%; }
+
 .popup-stats {
   display: flex;
   align-items: center;

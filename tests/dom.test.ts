@@ -305,6 +305,51 @@ describe('reader', () => {
     expect(card()?.textContent).toContain('谷歌翻译');
     expect(card()?.querySelector('[aria-label="解释语法"], [aria-label="润色表达"]')).toBeNull();
     document.getSelection()?.removeAllRanges();
+    const chinese = document.createTextNode('选中这段中文时不应该送去翻译。');
+    (document.querySelector('p') as HTMLParagraphElement).append(chinese);
+    const chineseRange = document.createRange();
+    chineseRange.setStart(chinese, 0);
+    chineseRange.setEnd(chinese, chinese.data.length);
+    document.getSelection()?.addRange(chineseRange);
+    let chineseCalls = 0;
+    const guarded = createReader({
+      doc: document,
+      scanDelayMs: 1000,
+      isVisible: () => true,
+      bridge: {
+        async getConfig() {
+          return { ...config, engine: 'chrome' };
+        },
+        async analyze() {
+          return { ok: true, data: { marks: [] } };
+        },
+        async translate() {
+          chineseCalls += 1;
+          return { ok: true, data: translated('不应该出现', 'sentence') };
+        },
+        async explain() {
+          return { ok: true, data: { explanationZh: '语法说明' } };
+        },
+        async polish() {
+          return { ok: true, data: { polishedEn: 'polished', noteZh: '说明' } };
+        },
+        async markKnown() {
+          return undefined;
+        },
+        async saveExpression() {
+          return undefined;
+        },
+        cancel() {
+          return undefined;
+        },
+      },
+    });
+    reader.dispose();
+    document.dispatchEvent(new Event('pointerup', { bubbles: true }));
+    await until(() => Boolean(document.getElementById('peeklish-root')?.shadowRoot?.textContent?.includes('只翻译英文')));
+    expect(chineseCalls).toBe(0);
+    guarded.dispose();
+    document.getSelection()?.removeAllRanges();
     reader.dispose();
   });
 
@@ -433,4 +478,152 @@ describe('reader', () => {
     expect(calls).toBe(3);
     reader.dispose();
   });
+
+  it('retries a failed scan, then stops until the reader asks again', async () => {
+    enableHighlights();
+    document.body.innerHTML =
+      '<p>When you plan a migration, you should take into account the performance implications before you carry out the change.</p>';
+    let calls = 0;
+    const reader = createReader({
+      doc: document,
+      scanDelayMs: 0,
+      isVisible: () => true,
+      bridge: {
+        async getConfig() {
+          return config;
+        },
+        async analyze() {
+          calls += 1;
+          if (calls === 1) return { ok: false, code: 'chrome', error: '当前 Chrome 无法使用内置翻译' };
+          return { ok: true, data: { marks: [] } };
+        },
+        async translate(body) {
+          return { ok: true, data: translated(body.selectedText, body.kind) };
+        },
+        async explain() {
+          return { ok: true, data: { explanationZh: '语法说明' } };
+        },
+        async polish() {
+          return { ok: true, data: { polishedEn: 'polished', noteZh: '说明' } };
+        },
+        async markKnown() {
+          return undefined;
+        },
+        async saveExpression() {
+          return undefined;
+        },
+        cancel() {
+          return undefined;
+        },
+      },
+    });
+    await until(() => calls >= 2);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(calls).toBe(2);
+    window.dispatchEvent(new Event('scroll'));
+    document.dispatchEvent(new Event('visibilitychange'));
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(calls).toBe(2);
+    reader.dispose();
+  });
+
+  it('retries from a scroll after repeated translation failures', async () => {
+    enableHighlights();
+    document.body.innerHTML =
+      '<p>When you plan a migration, you should take into account the performance implications before you carry out the change.</p>';
+    let calls = 0;
+    const reader = createReader({
+      doc: document,
+      scanDelayMs: 0,
+      isVisible: () => true,
+      bridge: {
+        async getConfig() {
+          return config;
+        },
+        async analyze() {
+          calls += 1;
+          return { ok: false, code: 'timeout', error: '请求超时，请稍后重试' };
+        },
+        async translate(body) {
+          return { ok: true, data: translated(body.selectedText, body.kind) };
+        },
+        async explain() {
+          return { ok: true, data: { explanationZh: '语法说明' } };
+        },
+        async polish() {
+          return { ok: true, data: { polishedEn: 'polished', noteZh: '说明' } };
+        },
+        async markKnown() {
+          return undefined;
+        },
+        async saveExpression() {
+          return undefined;
+        },
+        cancel() {
+          return undefined;
+        },
+      },
+    });
+    await until(() => calls >= 4);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(calls).toBe(4);
+    window.dispatchEvent(new Event('scroll'));
+    await until(() => calls >= 5);
+    reader.dispose();
+  });
+
+  it('scans a paragraph that appears after the first pass', async () => {
+    enableHighlights();
+    document.body.innerHTML =
+      '<p>When you plan a migration, you should take into account the performance implications before you carry out the change.</p>';
+    const seen: string[] = [];
+    const reader = createReader({
+      doc: document,
+      scanDelayMs: 0,
+      isVisible: () => true,
+      bridge: {
+        async getConfig() {
+          return config;
+        },
+        async analyze(body) {
+          seen.push(...body.blocks.map((block) => block.text));
+          return { ok: true, data: { marks: [] } };
+        },
+        async translate(body) {
+          return { ok: true, data: translated(body.selectedText, body.kind) };
+        },
+        async explain() {
+          return { ok: true, data: { explanationZh: '语法说明' } };
+        },
+        async polish() {
+          return { ok: true, data: { polishedEn: 'polished', noteZh: '说明' } };
+        },
+        async markKnown() {
+          return undefined;
+        },
+        async saveExpression() {
+          return undefined;
+        },
+        cancel() {
+          return undefined;
+        },
+      },
+    });
+    await until(() => seen.length >= 1);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    const added = 'In addition to the main queue, every worker keeps at least one retry slot for failed jobs.';
+    const paragraph = document.createElement('p');
+    paragraph.textContent = added;
+    document.body.appendChild(paragraph);
+    await until(() => seen.some((text) => text.includes('at least one')));
+    expect(seen.filter((text) => text.includes('take into account'))).toHaveLength(1);
+    reader.dispose();
+  });
 });
+
+function enableHighlights(): void {
+  (globalThis as unknown as { CSS: unknown; Highlight: unknown }).CSS = { highlights: { set() {}, delete() {} } };
+  (globalThis as unknown as { Highlight: unknown }).Highlight = class Highlight {
+    constructor(..._ranges: Range[]) {}
+  };
+}

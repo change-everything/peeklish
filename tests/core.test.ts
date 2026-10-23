@@ -3,6 +3,7 @@ import { canInjectPage, originMatchPattern, parseApiBaseUrl } from '../src/share
 import { assistantText, extractJson, joinSse } from '../src/shared/json';
 import { normalizeCanonical } from '../src/shared/normalizer';
 import { classifySelection, sentenceWindow } from '../src/shared/classify';
+import { isEnglishSelection } from '../src/shared/english';
 import { analysisCacheKey } from '../src/shared/cache-keys';
 import { filterExpressions } from '../src/shared/expressions-query';
 import { nextBudget } from '../src/domain/budget';
@@ -16,6 +17,7 @@ import { lexiconPhrases } from '../src/domain/lexicon';
 import { bridgeFailure } from '../src/content/runtime-error';
 import { splitTranslated } from '../src/chrome/builtin-translator';
 import { pickChromePhrases } from '../src/domain/chrome-phrases';
+import { consentWhenEnabling, migrateStoredSettings } from '../src/storage/settings';
 import type { ExpressionRecord } from '../src/shared/types';
 
 describe('chrome translator', () => {
@@ -127,6 +129,9 @@ describe('language helpers', () => {
     expect(classifySelection('reliability')).toBe('word');
     expect(classifySelection('take into account')).toBe('phrase');
     expect(classifySelection('The system will fall back to the cached response.')).toBe('sentence');
+    expect(isEnglishSelection('take into account')).toBe(true);
+    expect(isEnglishSelection('考虑到；把这项因素算进去')).toBe(false);
+    expect(isEnglishSelection('使用 API 的中文说明')).toBe(false);
     const window = sentenceWindow('aaaa take into account bbbb', 'take into account', 24);
     expect(window.length).toBeLessThanOrEqual(24);
   });
@@ -250,6 +255,35 @@ describe('phrase lexicon', () => {
     const phrases = lexiconPhrases([{ id: 'b_1', text }]);
     expect(phrases.map((phrase) => phrase.surface)).toContain('take into account');
     expect(phrases.map((phrase) => phrase.surface).join(' ')).not.toContain('a new application');
+  });
+});
+
+describe('settings migration', () => {
+  it('keeps a configured API when older settings have no engine field', () => {
+    const settings = migrateStoredSettings({ apiBaseUrl: 'https://api.openai.com/v1', modelId: 'gpt-4o-mini' }, false);
+    expect(settings.engine).toBe('api');
+  });
+
+  it('switches to the built-in translator only when no API address was saved', () => {
+    expect(migrateStoredSettings({ engine: 'api', apiBaseUrl: '' }, false).engine).toBe('chrome');
+    expect(migrateStoredSettings({}, false).engine).toBe('chrome');
+  });
+
+  it('keeps an explicit choice of the built-in translator', () => {
+    const settings = migrateStoredSettings({ engine: 'chrome', apiBaseUrl: 'https://api.openai.com/v1' }, false);
+    expect(settings.engine).toBe('chrome');
+  });
+
+  it('does not run the engine migration again', () => {
+    expect(migrateStoredSettings({ engine: 'api', apiBaseUrl: 'https://api.openai.com/v1' }, true).engine).toBe('api');
+    expect(migrateStoredSettings({ engine: 'chrome', apiBaseUrl: 'https://api.openai.com/v1' }, true).engine).toBe('chrome');
+  });
+
+  it('does not record send consent while the built-in translator is selected', () => {
+    expect(consentWhenEnabling('chrome', null)).toBeNull();
+    expect(consentWhenEnabling('chrome', 20)).toBe(20);
+    expect(consentWhenEnabling('api', 20)).toBe(20);
+    expect(consentWhenEnabling('api', null)).toBeGreaterThan(0);
   });
 });
 

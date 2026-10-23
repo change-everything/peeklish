@@ -1,6 +1,7 @@
 import { looseCanonical, sameExpression, wordCount } from '../domain/learning-value';
 import { LEVEL_LIMITS, LIMITS } from '../shared/limits';
 import { classifySelection, sentenceWindow } from '../shared/classify';
+import { isEnglishSelection } from '../shared/english';
 import { normalizeCanonical } from '../shared/normalizer';
 import type { KeyPhrase, LocatedPhrase, RuntimeConfig, SelectionKind, TranslationPayload } from '../shared/types';
 import { collectBlocks, pageLabels, type CollectedBlock } from './block-collector';
@@ -103,6 +104,11 @@ export function createReader(options: {
   const localKnown = new Set<string>();
   const localSaved = new Set<string>();
   let scanTimer = 0;
+  let contentTimer = 0;
+  let scanAttempts = 0;
+  let scanPaused = false;
+  let scanNeedsRetry = false;
+  let contentDirty = false;
   let hoverTimer = 0;
   let closeTimer = 0;
   let translateTimer = 0;
@@ -198,10 +204,36 @@ export function createReader(options: {
   function resetScan(): void {
     scanRun += 1;
     scanState = 'idle';
+    scanPaused = false;
+    scanNeedsRetry = false;
+    scanAttempts = 0;
+    contentDirty = false;
     scanElement = null;
     win.clearTimeout(scanTimer);
+    win.clearTimeout(contentTimer);
     win.cancelAnimationFrame?.(followFrame);
     popover.hideScan();
+  }
+
+  function defaultScanDelay(): number {
+    return options.scanDelayMs ?? LIMITS.scanDebounceMs;
+  }
+
+  function takeRetryDelay(): number | null {
+    if (scanAttempts >= 3) return null;
+    const delay = defaultScanDelay() === 0 ? 0 : [1500, 4000, 10000][Math.min(scanAttempts, 2)];
+    scanAttempts += 1;
+    return delay;
+  }
+
+  function pageNodesAdded(records: MutationRecord[]): boolean {
+    return records.some((record) => {
+      if (record.type !== 'childList' || record.addedNodes.length === 0) return false;
+      return [...record.addedNodes].some((node) => {
+        if (!(node instanceof Element)) return node.nodeType === Node.TEXT_NODE;
+        return node.id !== 'peeklish-root' && !node.hasAttribute('data-peeklish-root');
+      });
+    });
   }
 
   function scanBatches(blocks: CollectedBlock[]): CollectedBlock[][] {
@@ -253,6 +285,7 @@ export function createReader(options: {
     scanState = 'running';
     const run = scanRun;
     const live = () => run === scanRun && !disposed;
+    let retry = false;
     const animate = (options.scanDelayMs ?? LIMITS.scanDebounceMs) > 0 && !win.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     let requests = 0;
     try {
@@ -289,7 +322,10 @@ export function createReader(options: {
             dispose();
             return;
           }
-          if (response.code !== 'bad-response') return;
+          if (response.code !== 'bad-response') {
+            retry = response.code === 'chrome' || response.code === 'timeout' || response.code === 'network' || response.code === 'rate-limit';
+            return;
+          }
         }
         pending = index + 1 < batches.length ? request(batches[index + 1]) : null;
         for (const [position, block] of batch.entries()) {
@@ -302,18 +338,56 @@ export function createReader(options: {
         }
       }
     } finally {
-      if (run === scanRun) {
-        scanState = 'done';
+      if (run === scanRun && !disposed) {
         scanElement = null;
         popover.hideScan();
+        if (retry) {
+          scanNeedsRetry = true;
+          scanState = 'idle';
+          const delay = takeRetryDelay();
+          if (delay == null) scanPaused = true;
+          else scheduleScan(delay);
+        } else {
+          scanState = 'done';
+          scanPaused = false;
+          scanNeedsRetry = false;
+          scanAttempts = 0;
+          if (contentDirty) {
+            contentDirty = false;
+            noteNewContent();
+          }
+        }
       }
     }
   }
 
-  function scheduleScan(): void {
-    if (scanState !== 'idle') return;
+  function scheduleScan(delay = defaultScanDelay()): void {
+    if (scanState !== 'idle' || disposed) return;
     win.clearTimeout(scanTimer);
-    scanTimer = win.setTimeout(() => void scan(), options.scanDelayMs ?? LIMITS.scanDebounceMs);
+    scanTimer = win.setTimeout(() => {
+      scanPaused = false;
+      void scan();
+    }, delay);
+  }
+
+  function noteNewContent(): void {
+    if (disposed || scanState === 'running') {
+      contentDirty = true;
+      return;
+    }
+    win.clearTimeout(contentTimer);
+    const delay = defaultScanDelay();
+    contentTimer = win.setTimeout(() => {
+      if (disposed || scanState === 'running') return;
+      const fresh = collectBlocks(doc, { isVisible: renderedBlock, limit: LIMITS.scanMaxBlocks }).some((block) => !sent.has(block.text));
+      if (!fresh) return;
+      scanAttempts = 0;
+      scanPaused = false;
+      scanNeedsRetry = false;
+      contentDirty = false;
+      scanState = 'idle';
+      scheduleScan(delay);
+    }, delay);
   }
 
   function caretFromPoint(x: number, y: number): { node: Node; offset: number } | null {
@@ -469,6 +543,10 @@ export function createReader(options: {
       renderTranslate({ ...base, status: 'too-long' }, rect);
       return;
     }
+    if (!isEnglishSelection(source)) {
+      renderTranslate({ ...base, status: 'not-english' }, rect);
+      return;
+    }
     renderTranslate({ ...base, status: 'loading' }, rect);
     const context = contextFor(source, range);
     const response = await options.bridge.translate({ requestId, selectedText: source, context, kind });
@@ -620,17 +698,28 @@ export function createReader(options: {
       activeMark = -1;
       paint();
     }
+    if (scanNeedsRetry && scanState === 'idle') {
+      if (scanPaused) scanAttempts = 0;
+      scanPaused = false;
+      scheduleScan();
+    }
     followScan();
   }
 
   function onVisibilityChange(): void {
-    if (doc.visibilityState === 'visible') scheduleScan();
+    if (doc.visibilityState !== 'visible') return;
+    if (scanPaused) scanAttempts = 0;
+    scanPaused = false;
+    scheduleScan();
   }
 
   const observer = new MutationObserver((records) => {
     if (records.every((record) => popover.containsNode(record.target))) return;
     marks = marks.filter((mark) => mark.range.startContainer.isConnected);
     paint();
+    if (!pageNodesAdded(records)) return;
+    if (scanState === 'running') contentDirty = true;
+    else if (scanState === 'done') noteNewContent();
   });
   if (doc.body) observer.observe(doc.body, { subtree: true, childList: true, characterData: true });
 
@@ -693,6 +782,7 @@ export function createReader(options: {
     disposed = true;
     generation += 1;
     win.clearTimeout(scanTimer);
+    win.clearTimeout(contentTimer);
     win.clearTimeout(hoverTimer);
     win.clearTimeout(closeTimer);
     win.clearTimeout(translateTimer);

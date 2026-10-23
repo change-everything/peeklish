@@ -1,6 +1,5 @@
 import { browser } from 'wxt/browser';
-import { DEFAULT_SETTINGS, type Settings } from '../shared/types';
-import { listSites, saveSites } from './sites';
+import { DEFAULT_SETTINGS, type Settings, type TranslationEngine } from '../shared/types';
 
 const KEY = 'settings';
 const PREFER_REAL_API = 'preferRealApi';
@@ -24,31 +23,34 @@ function normalize(value: Partial<Settings>): Settings {
   };
 }
 
-async function grantEnabledSiteConsent(): Promise<void> {
-  const sites = await listSites();
-  const now = Date.now();
-  let changed = false;
-  const next = sites.map((site) => {
-    if (!site.enabled || site.aiTextConsentAt) return site;
-    changed = true;
-    return { ...site, aiTextConsentAt: now };
-  });
-  if (changed) await saveSites(next);
+export function migrateStoredSettings(stored: Partial<Settings> | undefined, builtinDefault: boolean): Settings {
+  const settings = normalize(stored ?? {});
+  if (builtinDefault) return settings;
+  if (!settings.apiBaseUrl) settings.engine = 'chrome';
+  else if (stored?.engine !== 'chrome') settings.engine = 'api';
+  return settings;
+}
+
+export function consentWhenEnabling(engine: TranslationEngine, existing: number | null | undefined): number | null {
+  if (engine !== 'api') return existing ?? null;
+  return existing ?? Date.now();
 }
 
 export async function getSettings(): Promise<Settings> {
   const data = await browser.storage.local.get([KEY, PREFER_REAL_API, BUILTIN_DEFAULT]);
   const stored = data[KEY];
-  const value = stored && typeof stored === 'object' ? (stored as Partial<Settings>) : {};
-  const settings = normalize(value);
+  const value = stored && typeof stored === 'object' ? (stored as Partial<Settings>) : undefined;
+  const settings = migrateStoredSettings(value, data[BUILTIN_DEFAULT] === true);
+  const patch: Record<string, unknown> = {};
   if (data[BUILTIN_DEFAULT] !== true) {
-    if (!settings.apiBaseUrl) settings.engine = 'chrome';
-    await browser.storage.local.set({ [BUILTIN_DEFAULT]: true, [KEY]: settings });
+    patch[BUILTIN_DEFAULT] = true;
+    patch[KEY] = settings;
   }
   if (data[PREFER_REAL_API] !== true) {
-    await browser.storage.local.set({ [PREFER_REAL_API]: true, [KEY]: settings });
-    await grantEnabledSiteConsent();
+    patch[PREFER_REAL_API] = true;
+    patch[KEY] = settings;
   }
+  if (Object.keys(patch).length) await browser.storage.local.set(patch);
   return settings;
 }
 

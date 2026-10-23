@@ -5,7 +5,7 @@ import { canInjectPage, originMatchPattern } from '../../shared/api-url';
 import { ASSISTANCE_OPTIONS, ENGINE_OPTIONS, type AssistanceLevel, type Settings, type TranslationEngine } from '../../shared/types';
 import { prepareChromeTranslator } from '../../chrome/builtin-translator';
 import { getApiKey } from '../../storage/keys';
-import { getSettings, saveSettings } from '../../storage/settings';
+import { consentWhenEnabling, getSettings, saveSettings } from '../../storage/settings';
 import { getSite, saveSite } from '../../storage/sites';
 import { Icon } from '../../ui/Icon';
 import type { IconName } from '../../ui/icon-shapes';
@@ -86,7 +86,12 @@ export function App() {
       return;
     }
     if (settings.engine === 'chrome' && !(await prepareBuiltin())) return;
-    await saveSite({ origin: page.origin, enabled: true, aiTextConsentAt: Date.now() });
+    const existing = await getSite(page.origin);
+    await saveSite({
+      origin: page.origin,
+      enabled: true,
+      aiTextConsentAt: consentWhenEnabling(settings.engine, existing?.aiTextConsentAt),
+    });
     await syncRegisteredScripts();
     await injectContentScript(tabId).catch(() => undefined);
     await browser.tabs.sendMessage(tabId, { type: 'ENSURE' }).catch(() => undefined);
@@ -116,6 +121,15 @@ export function App() {
     return true;
   }
 
+  async function grantPageConsent() {
+    if (!page.ok) return;
+    const site = await getSite(page.origin);
+    await saveSite({ origin: page.origin, enabled: site?.enabled ?? true, aiTextConsentAt: Date.now() });
+    if (tabId != null) await browser.tabs.sendMessage(tabId, { type: 'APPLY_CONFIG' }).catch(() => undefined);
+    setConsent(true);
+    setBanner('');
+  }
+
   function openOptions(hash: string) {
     void browser.tabs.create({ url: browser.runtime.getURL(`/options.html#${hash}`) });
   }
@@ -133,6 +147,7 @@ export function App() {
             ? ['等待你同意发送文本', 'warn']
             : ['正在此网站工作', 'on'];
   const usage = builtin ? '本机翻译' : `AI 请求 ${requests} 次`;
+  const needsPageConsent = page.ok && enabled && !builtin && !consent;
 
   return (
     <main className="popup">
@@ -165,7 +180,7 @@ export function App() {
         </Row>
       </Section>
 
-      {(banner || lastError) && (
+      {(banner || lastError || needsPageConsent) && (
         <div className="notices">
           {banner && (
             <p className="notice warn">
@@ -178,6 +193,17 @@ export function App() {
               <Icon name="info" size={16} />
               {lastError}
             </p>
+          )}
+          {needsPageConsent && (
+            <div className="consent-row">
+              <p className="notice warn">
+                <Icon name="shield" size={16} />
+                同意后，这个网站的英文片段才会发送给 AI 服务。
+              </p>
+              <button type="button" className="btn primary" onClick={() => void grantPageConsent()}>
+                同意并继续
+              </button>
+            </div>
           )}
         </div>
       )}

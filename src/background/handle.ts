@@ -25,6 +25,7 @@ import { deleteApiKey, getApiKey } from '../storage/keys';
 import { getSettings } from '../storage/settings';
 import { getSite } from '../storage/sites';
 import { canInjectPage } from '../shared/api-url';
+import { isEnglishSelection } from '../shared/english';
 
 type Sender = Browser.runtime.MessageSender;
 
@@ -241,6 +242,7 @@ async function analyze(sender: Sender, message: Record<string, unknown>): Promis
         blockedSurfaces,
         level: settings.assistanceLevel,
       });
+      await clearError();
       return { ok: true, data: { marks } };
     } catch (error) {
       const code = failureCode(error);
@@ -378,6 +380,7 @@ async function translateLike(
   const selectedText = typeof message.selectedText === 'string' ? message.selectedText.trim() : '';
   if (!selectedText) return fail('config');
   if (selectedText.length > LIMITS.maxSelectionChars) return fail('too-long');
+  if (!isEnglishSelection(selectedText)) return fail('not-english');
   const context = typeof message.context === 'string' ? message.context.trim().slice(0, LIMITS.maxContextChars) : '';
   const kind = (['word', 'phrase', 'sentence', 'paragraph'] as const).includes(message.kind as SelectionKind)
     ? (message.kind as SelectionKind)
@@ -386,9 +389,13 @@ async function translateLike(
   if (settings.engine === 'chrome') {
     if (mode !== 'translate') return fail('needs-ai');
     try {
-      return { ok: true, data: await chromeSelection(selectedText, kind, settings.assistanceLevel) };
+      const data = await chromeSelection(selectedText, kind, settings.assistanceLevel);
+      await clearError();
+      return { ok: true, data };
     } catch (error) {
-      return fail(failureCode(error));
+      const code = failureCode(error);
+      if (code !== 'aborted') await rememberError(code);
+      return fail(code);
     }
   }
   if (!config.aiConsent) return fail('consent');

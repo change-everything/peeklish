@@ -1,3 +1,13 @@
+const OTHER_SCRIPT = /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/g;
+
+export function isEnglishSelection(text: string): boolean {
+  const letters = text.match(/[A-Za-z]/g)?.length ?? 0;
+  const other = text.match(OTHER_SCRIPT)?.length ?? 0;
+  if (letters < 1) return false;
+  if (other === 0) return true;
+  return letters > other * 2;
+}
+
 export function isEnglishBlock(text: string, minChars = 30): boolean {
   const trimmed = text.replace(/\s+/g, ' ').trim();
   if (trimmed.length < minChars) return false;

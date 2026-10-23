@@ -9,6 +9,7 @@ const TEXT: Record<string, string> = {
   consent: '需要你同意后，才会把网页文本发送给 AI 服务',
   budget: '本页自动标注已达上限，剩余段落不再标注。可在「阅读偏好」里调高，划词翻译不受影响',
   'too-long': '选中的内容超过 2000 个字符，请缩短后再翻译',
+  'not-english': '这段不是英文。peeklish 只翻译英文',
   disabled: '已在此网站关闭 peeklish',
   unsupported: '当前页面不支持',
   stale: '已忽略过期结果',

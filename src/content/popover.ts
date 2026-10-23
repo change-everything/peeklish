@@ -15,7 +15,7 @@ export type HoverModel = {
 
 export type TranslateModel = {
   requestId: string;
-  status: 'loading' | 'ready' | 'error' | 'too-long';
+  status: 'loading' | 'ready' | 'error' | 'too-long' | 'not-english';
   kind?: SelectionKind;
   source: string;
   meaningZh?: string;
@@ -319,10 +319,11 @@ export class Popover {
     this.card.replaceChildren();
     const head = this.el('div', 'head');
     const label = this.el('div', 'label');
-    if (model.engine === 'chrome') label.append(iconElement(this.doc, 'languages', 14), '谷歌翻译');
+    if (model.status === 'not-english') label.textContent = 'peeklish';
+    else if (model.engine === 'chrome') label.append(iconElement(this.doc, 'languages', 14), '谷歌翻译');
     else label.append(iconElement(this.doc, 'sparkles', 14), 'AI 翻译');
     const tools = this.el('div', 'tools');
-    if (canSpeak()) tools.append(button('', 'icon', model.onSpeak, { icon: 'speaker', aria: '朗读' }));
+    if (model.status !== 'not-english' && canSpeak()) tools.append(button('', 'icon', model.onSpeak, { icon: 'speaker', aria: '朗读' }));
     tools.append(button('', 'icon', model.onClose, { icon: 'close', aria: '关闭' }));
     head.append(label, tools);
     this.card.append(head);
@@ -333,6 +334,8 @@ export class Popover {
       this.card.append(loading);
     } else if (model.status === 'too-long') {
       this.card.append(this.el('div', 'error', '选区超过 2000 个字符，请缩短后再翻译。'));
+    } else if (model.status === 'not-english') {
+      this.card.append(this.el('div', 'meaning', '这段不是英文。peeklish 只翻译英文。'));
     } else if (model.status === 'error') {
       const actions = this.el('div', 'actions');
       actions.append(button('重试', 'text-btn', model.onRetry));
