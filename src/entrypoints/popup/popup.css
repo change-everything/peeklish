@@ -1,0 +1,127 @@
+:root {
+  font: 15px/1.45 var(--font);
+}
+
+html { overflow-x: hidden; }
+
+body {
+  width: 380px;
+  background: var(--bg);
+}
+
+.popup {
+  display: grid;
+  gap: 16px;
+  padding: 14px 14px 16px;
+}
+
+.popup .row { min-height: 48px; padding-top: 8px; padding-bottom: 8px; }
+
+.popup .row .segmented {
+  flex: 0 0 auto;
+  width: 176px;
+}
+
+.popup .row .segmented button {
+  min-height: 28px;
+  padding: 4px 6px;
+  font-size: 13px;
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.tile {
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  padding: 13px 6px 11px;
+  border: 0;
+  border-radius: var(--radius-group);
+  background: var(--surface);
+  box-shadow: var(--shadow-group);
+  color: var(--label);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.18s var(--ease), transform 0.18s var(--ease);
+}
+
+.tile:hover { background: var(--bg-elevated); box-shadow: var(--shadow-raised); }
+
+.tile:active { transform: scale(0.97); }
+
+.popup-head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 11px;
+  padding: 2px 2px 0;
+}
+
+.logo {
+  display: block;
+  filter: drop-shadow(0 1px 1.5px rgba(120, 80, 0, 0.22));
+}
+
+.popup-brand {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.wordmark {
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.15;
+}
+
+.popup-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--secondary);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.list-section { display: grid; }
+
+.site .row { min-height: 64px; }
+
+.site .row-title { font-size: 16px; font-weight: 600; }
+
+.notices {
+  display: grid;
+  gap: 8px;
+  margin-top: -6px;
+}
+
+.popup-stats {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: -4px 0;
+  color: var(--secondary);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.popup-stats b {
+  color: var(--label);
+  font-weight: 600;
+}
+
+.popup-stats .sep {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--tertiary);
+}

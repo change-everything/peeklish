@@ -1,0 +1,17 @@
+::highlight(peeklish-mark) {
+  background-color: transparent;
+  text-decoration-line: underline;
+  text-decoration-style: solid;
+  text-decoration-color: #e6b000;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}
+
+::highlight(peeklish-hover) {
+  background-color: #fff6d4;
+  text-decoration-line: underline;
+  text-decoration-style: solid;
+  text-decoration-color: #e6b000;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}

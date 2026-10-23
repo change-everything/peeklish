@@ -1,0 +1,38 @@
+{
+  "name": "peeklish",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Read English. Peek when needed. Chrome extension that underlines English worth learning and shows Chinese on hover.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/change-everything/peeklish.git"
+  },
+  "homepage": "https://github.com/change-everything/peeklish#readme",
+  "bugs": {
+    "url": "https://github.com/change-everything/peeklish/issues"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "build": "wxt build",
+    "zip": "wxt zip",
+    "test": "vitest run",
+    "icons": "node scripts/make-icons.mjs",
+    "postinstall": "wxt prepare"
+  },
+  "dependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@wxt-dev/module-react": "^1.1.5",
+    "jsdom": "^26.1.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4",
+    "wxt": "^0.20.11"
+  }
+}
