@@ -15,7 +15,7 @@ const TEXT: Record<string, string> = {
   stale: '已忽略过期结果',
   aborted: '请求已取消',
   chrome: '当前 Chrome 无法使用内置翻译，请升级到最新版，或改用自定义 AI',
-  'needs-ai': '语法解释和润色需要自定义 AI',
+  'needs-ai': '解释需要在设置里配置自定义 AI',
 };
 
 export function errorText(code: string, fallback = ''): string {

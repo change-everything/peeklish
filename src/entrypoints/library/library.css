@@ -1,0 +1,12 @@
+body { background: var(--paper); }
+.library { max-width: 760px; margin: 0 auto; padding: 28px 20px 48px; }
+.library h1 { margin: 0 0 6px; font-size: 28px; letter-spacing: -0.03em; }
+.library .lead { margin: 0 0 16px; color: var(--muted); }
+.library input { width: 100%; box-sizing: border-box; margin-bottom: 16px; }
+.doc-block { margin: 0 0 18px; }
+.doc-block header { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 8px; }
+.doc-block h2 { margin: 0; font-size: 16px; }
+.doc-block a { color: var(--muted); font-size: 12px; }
+.row-actions { display: flex; gap: 8px; }
+.row-actions button { color: #8a6400; font-size: 13px; }
+.row-actions button.danger { color: #c5362b; }

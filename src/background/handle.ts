@@ -14,10 +14,11 @@ import {
   buildAnalysisMessages,
   buildExplainMessages,
   buildPolishMessages,
+  buildReadingExplainMessages,
   buildTestMessages,
   buildTranslationMessages,
 } from '../domain/prompts';
-import { bindPhrasesToBlocks, parseAnalysis, parseExplanation, parsePolish, parseTranslation, type ParsedPhrase } from '../domain/schema';
+import { bindPhrasesToBlocks, parseAnalysis, parseExplanation, parsePolish, parseReadingExplanation, parseTranslation, type ParsedPhrase } from '../domain/schema';
 import { selectMarks } from '../domain/select-marks';
 import { cacheGet, cacheSet } from '../storage/cache';
 import { knownCanonicals, upsertExpression } from '../storage/expressions';
@@ -25,7 +26,13 @@ import { deleteApiKey, getApiKey } from '../storage/keys';
 import { getSettings } from '../storage/settings';
 import { getSite } from '../storage/sites';
 import { canInjectPage } from '../shared/api-url';
+import { documentKey } from '../shared/doc-key';
+import { publish } from '../shared/bus';
 import { isEnglishSelection } from '../shared/english';
+import { openSidePanel } from '../chrome/side-panel';
+import { handleNotesMessage, readAnchor } from './notes-messages';
+import { readExplainJob, setPanelFocus, writeExplainJob } from '../storage/panel-state';
+import type { ExplainJob } from '../shared/types';
 
 type Sender = Browser.runtime.MessageSender;
 
@@ -479,6 +486,100 @@ function expressionInput(value: unknown): {
   };
 }
 
+async function explainPage(sender: Sender, message: Record<string, unknown>): Promise<Result<unknown>> {
+  const opening = openSidePanel(sender.tab?.id ?? -1);
+  const origin = pageOrigin(sender);
+  const url = sender.tab?.url;
+  const tabId = sender.tab?.id;
+  if (!origin || !url || tabId == null) return fail('unsupported');
+  const site = await getSite(origin);
+  if (!site?.enabled) return fail('disabled');
+  const docId = documentKey(url);
+  const anchor = readAnchor(message.anchor);
+  if (!docId || !anchor) return fail('config');
+  const mode = anchor.kind === 'code' ? 'explain-code' : 'explain';
+  const requestId = `x${Date.now()}`;
+  const base: ExplainJob = {
+    docId,
+    requestId,
+    mode,
+    source: anchor.exact,
+    heading: anchor.heading,
+    context: anchor.context,
+    lang: anchor.lang,
+    anchor,
+    status: 'loading',
+  };
+  const settings = await getSettings();
+  if (!isEnglishSelection(anchor.exact)) {
+    await writeExplainJob({ ...base, status: 'error', error: errorText('not-english') });
+    await setPanelFocus({ docId, tab: 'explain', at: Date.now() });
+    publish('explain', docId);
+    await opening;
+    return fail('not-english');
+  }
+  if (settings.engine === 'chrome') {
+    await writeExplainJob({ ...base, status: 'needs-ai', error: errorText('needs-ai') });
+    await setPanelFocus({ docId, tab: 'explain', at: Date.now() });
+    publish('explain', docId);
+    await opening;
+    return { ok: true, data: { status: 'needs-ai' } };
+  }
+  const config = await runtimeConfig(origin);
+  if (!config.aiConsent) {
+    await writeExplainJob({ ...base, status: 'error', error: errorText('consent') });
+    await setPanelFocus({ docId, tab: 'explain', at: Date.now() });
+    publish('explain', docId);
+    await opening;
+    return fail('consent');
+  }
+  if (!config.hasKey || !parseApiBaseUrl(settings.apiBaseUrl)) {
+    await writeExplainJob({ ...base, status: 'error', error: errorText('config') });
+    await setPanelFocus({ docId, tab: 'explain', at: Date.now() });
+    publish('explain', docId);
+    await opening;
+    return fail('config');
+  }
+  await writeExplainJob(base);
+  await setPanelFocus({ docId, tab: 'explain', at: Date.now() });
+  publish('explain', docId);
+  await opening;
+  const signal = signalFor(tabId, 'selection');
+  try {
+    const key = await getApiKey(settings.keyPersistence);
+    const text = await callModel({
+      apiBaseUrl: settings.apiBaseUrl,
+      modelId: settings.modelId,
+      apiKey: key,
+      messages: buildReadingExplainMessages({
+        mode: anchor.kind === 'code' ? 'code' : 'text',
+        selectedText: anchor.exact,
+        heading: anchor.heading,
+        context: anchor.context,
+        lang: anchor.lang,
+      }),
+      temperature: 0.3,
+      maxTokens: 800,
+      signal,
+    });
+    const tab = await browser.tabs.get(tabId);
+    if (!tab.url || documentKey(tab.url) !== docId) return { ok: true, data: { ignored: true } };
+    const data = parseReadingExplanation(extractJson(text));
+    await writeExplainJob({ ...base, status: 'ready', text: data.explanationZh, model: settings.modelId });
+    publish('explain', docId);
+    await clearError();
+    return { ok: true, data };
+  } catch (error) {
+    const code = failureCode(error);
+    if (code !== 'aborted') {
+      await writeExplainJob({ ...base, status: 'error', error: errorText(code) });
+      publish('explain', docId);
+      await rememberError(code);
+    }
+    return fail(code);
+  }
+}
+
 export async function handleMessage(message: unknown, sender: Sender): Promise<Result<unknown>> {
   if (!message || typeof message !== 'object' || typeof (message as { type?: unknown }).type !== 'string') {
     return fail('config');
@@ -488,6 +589,18 @@ export async function handleMessage(message: unknown, sender: Sender): Promise<R
     if (sender.tab?.id != null) cancelTab(sender.tab.id);
     return { ok: true, data: null };
   }
+  if (body.type === 'EXPLAIN_PAGE') return explainPage(sender, body);
+  if (body.type === 'RETRY_EXPLAIN') {
+    if (!trusted(sender)) return fail('permission');
+    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+    if (tab?.id == null || !tab.url) return fail('unsupported');
+    const docId = documentKey(tab.url);
+    const job = docId ? await readExplainJob(docId) : null;
+    if (!job) return fail('config');
+    return explainPage({ tab } as Sender, { anchor: job.anchor });
+  }
+  const notesResponse = await handleNotesMessage(body, sender);
+  if (notesResponse) return notesResponse;
   if (body.type === 'GET_CONFIG') {
     const origin = pageOrigin(sender);
     if (!origin) return fail('unsupported');

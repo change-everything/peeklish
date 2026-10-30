@@ -206,6 +206,15 @@ export function parseExplanation(data: unknown): { explanationZh: string } {
   return { explanationZh };
 }
 
+export function parseReadingExplanation(data: unknown): { explanationZh: string } {
+  if (!data || typeof data !== 'object' || typeof (data as { explanationZh?: unknown }).explanationZh !== 'string') {
+    throw new Error('BAD_EXPLANATION');
+  }
+  const explanationZh = cleanModelText((data as { explanationZh: string }).explanationZh, LIMITS.maxReadingExplanation);
+  if (!explanationZh) throw new Error('BAD_EXPLANATION');
+  return { explanationZh };
+}
+
 export function parsePolish(data: unknown): { polishedEn: string; noteZh: string } {
   if (!data || typeof data !== 'object') throw new Error('BAD_POLISH');
   const record = data as { polishedEn?: unknown; noteZh?: unknown };

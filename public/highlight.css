@@ -15,3 +15,16 @@
   text-decoration-thickness: 1px;
   text-underline-offset: 0.18em;
 }
+
+::highlight(peeklish-note) {
+  background-color: rgba(245, 196, 0, 0.32);
+}
+
+::highlight(peeklish-flash) {
+  background-color: rgba(245, 196, 0, 0.55);
+}
+
+::selection {
+  background: #ffe08a;
+  color: inherit;
+}

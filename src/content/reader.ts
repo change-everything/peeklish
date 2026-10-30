@@ -3,10 +3,12 @@ import { LEVEL_LIMITS, LIMITS } from '../shared/limits';
 import { classifySelection, sentenceWindow } from '../shared/classify';
 import { isEnglishSelection } from '../shared/english';
 import { normalizeCanonical } from '../shared/normalizer';
-import type { KeyPhrase, LocatedPhrase, RuntimeConfig, SelectionKind, TranslationPayload } from '../shared/types';
+import type { KeyPhrase, LocatedPhrase, PendingAnchor, RuntimeConfig, SelectionKind, TranslationPayload } from '../shared/types';
+import { captureAnchor } from './anchor';
 import { collectBlocks, pageLabels, type CollectedBlock } from './block-collector';
 import { clearHighlights, ensureHighlightStyle, highlightsAvailable, syncHighlights } from './highlights';
 import { Popover, type TranslateModel } from './popover';
+import { SelectionToolbar } from './toolbar';
 import { buildIndex, rangeForOffsets, offsetInIndex, type IndexedText } from './text-index';
 import { speakEnglish } from './speak';
 
@@ -45,6 +47,8 @@ export type Bridge = {
     known?: boolean;
   }) => Promise<void>;
   cancel: () => void;
+  captureExcerpt?: (anchor: PendingAnchor) => Promise<void>;
+  requestExplain?: (anchor: PendingAnchor) => Promise<void>;
 };
 
 type LiveMark = LocatedPhrase & { range: Range; indexed: IndexedText };
@@ -85,6 +89,7 @@ export function createReader(options: {
   const doc = options.doc ?? document;
   const win = doc.defaultView ?? window;
   const popover = new Popover(doc);
+  const toolbar = new SelectionToolbar(doc);
   let pointerOverCard = false;
   popover.setHoverGuard(
     () => {
@@ -123,6 +128,7 @@ export function createReader(options: {
   let configKey = '';
   let lastModel: TranslateModel | null = null;
   let pointerInPopover = false;
+  let pointerInToolbar = false;
 
   function clearMarkState(): void {
     marks = [];
@@ -509,12 +515,12 @@ export function createReader(options: {
     popover.showTranslate(rect, model);
   }
 
-  function queueTranslate(): void {
+  function queueToolbar(): void {
     win.clearTimeout(translateTimer);
-    translateTimer = win.setTimeout(() => void translateSelection(), 80);
+    translateTimer = win.setTimeout(() => showToolbar(), 80);
   }
 
-  async function translateSelection(): Promise<void> {
+  function showToolbar(): void {
     if (!ensureAlive()) return;
     if (disposed || !config?.siteEnabled || !config.selectionTranslateEnabled) return;
     const range = selectionRange();
@@ -523,7 +529,46 @@ export function createReader(options: {
     if (popover.containsNode(range.startContainer)) return;
     if (elementOf(range.startContainer)?.closest('input, textarea, [contenteditable="true"]')) return;
     const source = raw.trim();
+    const anchor =
+      captureAnchor(doc, range) ??
+      ({
+        kind: 'text',
+        exact: source.slice(0, 4000),
+        prefix: '',
+        suffix: '',
+        blockPath: '',
+        blockOffset: 0,
+        docOffset: 0,
+        context: source.slice(0, 300),
+      } satisfies PendingAnchor);
     const rect = clientRect(range);
+    toolbar.show(rect, anchor, {
+      onTranslate: () => {
+        toolbar.hide();
+        void translateSelection({ source: anchor.exact, rect, context: anchor.context || contextFor(anchor.exact, range) });
+      },
+      onExplain: () => {
+        toolbar.hide();
+        void options.bridge.requestExplain?.(anchor);
+      },
+      onExcerpt: () => {
+        toolbar.hide();
+        void options.bridge.captureExcerpt?.(anchor);
+      },
+      onCopy: () => void copyText(anchor.exact),
+    });
+  }
+
+  async function translateSelection(preset?: { source: string; rect: DOMRect; context: string }): Promise<void> {
+    if (!ensureAlive()) return;
+    if (disposed || !config?.siteEnabled || !config.selectionTranslateEnabled) return;
+    const range = selectionRange();
+    const raw = preset?.source ?? doc.getSelection()?.toString() ?? '';
+    if (!preset && (!range || !raw.trim())) return;
+    if (!preset && range && popover.containsNode(range.startContainer)) return;
+    if (!preset && range && elementOf(range.startContainer)?.closest('input, textarea, [contenteditable="true"]')) return;
+    const source = raw.trim();
+    const rect = preset?.rect ?? (range ? clientRect(range) : new DOMRect(16, 16, 12, 12));
     translateSerial += 1;
     const serial = translateSerial;
     const requestId = `t${serial}`;
@@ -548,7 +593,7 @@ export function createReader(options: {
       return;
     }
     renderTranslate({ ...base, status: 'loading' }, rect);
-    const context = contextFor(source, range);
+    const context = preset?.context ?? (range ? contextFor(source, range) : '');
     const response = await options.bridge.translate({ requestId, selectedText: source, context, kind });
     if (disposed || serial !== translateSerial) return;
     if (!response.ok) {
@@ -650,6 +695,11 @@ export function createReader(options: {
 
   function onPointerDown(event: PointerEvent): void {
     if (!ensureAlive()) return;
+    if (toolbar.hit(event)) {
+      event.preventDefault();
+      pointerInToolbar = true;
+      return;
+    }
     pointerInPopover = popover.hit(event);
     selecting = true;
     win.clearTimeout(hoverTimer);
@@ -663,6 +713,13 @@ export function createReader(options: {
 
   function onPointerUp(event: PointerEvent): void {
     selecting = false;
+    if (toolbar.hit(event)) {
+      win.setTimeout(() => {
+        pointerInToolbar = false;
+      }, 0);
+      return;
+    }
+    pointerInToolbar = false;
     if (popover.hit(event)) {
       pointerInPopover = true;
       return;
@@ -670,25 +727,28 @@ export function createReader(options: {
     pointerInPopover = false;
     const text = doc.getSelection()?.toString().trim() ?? '';
     if (!text) {
+      toolbar.hide();
       dismissTranslate();
       return;
     }
-    queueTranslate();
+    queueToolbar();
   }
 
   function onSelectionChange(): void {
-    if (disposed || pointerInPopover) return;
+    if (disposed || pointerInPopover || pointerInToolbar) return;
     const text = doc.getSelection()?.toString().trim() ?? '';
-    if (text || !popover.isTranslateOpen()) return;
-    dismissTranslate();
+    if (text) return;
+    toolbar.hide();
+    if (popover.isTranslateOpen()) dismissTranslate();
   }
 
   function onKeyUp(event: KeyboardEvent): void {
     if (event.key === 'Escape') {
       popover.hide();
+      toolbar.hide();
       return;
     }
-    if (event.key === 'Shift' || event.key.startsWith('Arrow')) queueTranslate();
+    if (event.key === 'Shift' || event.key.startsWith('Arrow')) queueToolbar();
   }
 
   function onScroll(): void {
@@ -800,6 +860,7 @@ export function createReader(options: {
     win.cancelAnimationFrame?.(followFrame);
     clearMarkState();
     clearHighlights(doc);
+    toolbar.destroy();
     popover.hideScan();
     popover.destroy();
     options.bridge.cancel();

@@ -1,5 +1,5 @@
 import { browser } from 'wxt/browser';
-import type { RuntimeConfig } from '../shared/types';
+import type { PendingAnchor, RuntimeConfig } from '../shared/types';
 import type { Bridge } from './reader';
 import { bridgeFailure } from './runtime-error';
 
@@ -67,6 +67,12 @@ export function extensionBridge(): Bridge {
     },
     cancel() {
       void browser.runtime.sendMessage({ type: 'CANCEL_TAB' }).catch(() => undefined);
+    },
+    async captureExcerpt(anchor: PendingAnchor) {
+      await send({ type: 'CAPTURE_EXCERPT', anchor }).catch(() => undefined);
+    },
+    async requestExplain(anchor: PendingAnchor) {
+      await send({ type: 'EXPLAIN_PAGE', anchor }).catch(() => undefined);
     },
   };
 }

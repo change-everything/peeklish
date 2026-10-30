@@ -29,7 +29,7 @@ async function registerEnabledOrigins(): Promise<void> {
         },
       ]);
     } catch {
-      // The site permission may have been removed. Enabling from the popup asks again.
+      // The site permission may have been removed. Enabling from the side panel asks again.
     }
   }
 }

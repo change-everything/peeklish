@@ -148,3 +148,87 @@ export const EXPRESSION_TYPES: ExpressionType[] = [
   'word',
   'other',
 ];
+
+export type ExcerptKind = 'text' | 'code';
+export type AnchorStatus = 'ok' | 'moved' | 'ambiguous';
+export type PanelTab = 'notes' | 'words' | 'explain';
+
+export type PendingAnchor = {
+  kind: ExcerptKind;
+  exact: string;
+  prefix: string;
+  suffix: string;
+  blockPath: string;
+  blockOffset: number;
+  docOffset: number;
+  heading?: string;
+  lang?: string;
+  context: string;
+};
+
+export type DocRecord = {
+  id: string;
+  url: string;
+  title: string;
+  origin: string;
+  createdAt: number;
+  lastOpenedAt: number;
+};
+
+export type Annotation = {
+  id: string;
+  docId: string;
+  kind: ExcerptKind;
+  exact: string;
+  prefix: string;
+  suffix: string;
+  blockPath: string;
+  blockOffset: number;
+  docOffset: number;
+  heading?: string;
+  lang?: string;
+  status: AnchorStatus;
+  createdAt: number;
+};
+
+export type NoteAi = {
+  text: string;
+  mode: 'explain' | 'explain-code';
+  model: string;
+  savedAt: number;
+};
+
+export type Note = {
+  id: string;
+  docId: string;
+  annotationId: string | null;
+  title: string;
+  body: string;
+  tags: string[];
+  ai?: NoteAi;
+  createdAt: number;
+  updatedAt: number;
+  deletedAt?: number;
+};
+
+export type ExplainJob = {
+  docId: string;
+  requestId: string;
+  mode: 'explain' | 'explain-code';
+  source: string;
+  heading?: string;
+  context: string;
+  lang?: string;
+  anchor: PendingAnchor;
+  status: 'loading' | 'ready' | 'error' | 'needs-ai';
+  text?: string;
+  error?: string;
+  model?: string;
+};
+
+export type PanelFocus = {
+  docId: string;
+  noteId?: string;
+  tab: PanelTab;
+  at: number;
+};

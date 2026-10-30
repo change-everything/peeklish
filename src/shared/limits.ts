@@ -10,6 +10,8 @@ export const LIMITS = {
   maxNote: 200,
   maxTranslation: 4000,
   maxExplanation: 500,
+  maxReadingExplanation: 1200,
+  maxExcerpt: 4000,
   maxPolish: 2000,
   hoverOpenMs: 250,
   hoverCloseMs: 280,

@@ -122,12 +122,12 @@ try {
   await sleep(800);
   const welcome = await inspect(`chrome-extension://${extensionId}/options.html#welcome`, 'welcome');
   const ai = await inspect(`chrome-extension://${extensionId}/options.html#ai`, 'ai');
-  const popup = await inspect(`chrome-extension://${extensionId}/popup.html`, 'popup');
+  const popup = await inspect(`chrome-extension://${extensionId}/sidepanel.html`, 'sidepanel');
   for (const phrase of ['peeklish', 'Read English. Peek when needed.', '智能标注短语', '个人表达库']) {
     if (!welcome.includes(phrase)) throw new Error(`welcome missing ${phrase}\n${welcome}`);
   }
   if (!ai.includes('在本机完成') || ai.includes('API Key')) throw new Error(`built-in engine should hide API fields\n${ai}`);
-  if (!popup.includes('在当前网站启用') || !popup.includes('辅助强度')) throw new Error(`popup missing controls\n${popup}`);
+  if (!popup.includes('Peeklish') || !popup.includes('正在阅读') || !popup.includes('笔记')) throw new Error(`side panel missing controls\n${popup}`);
   if (/演示/.test(welcome + ai + popup)) throw new Error('demo copy is still visible');
   const target = await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(`chrome-extension://${extensionId}/options.html#ai`)}`, {
     method: 'PUT',

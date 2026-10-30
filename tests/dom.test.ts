@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 import { describe, expect, it } from 'vitest';
+import { captureAnchor, restoreAnchor } from '../src/content/anchor';
 import { collectBlocks } from '../src/content/block-collector';
 import { buildIndex, rangeForOffsets } from '../src/content/text-index';
 import { createReader } from '../src/content/reader';
@@ -21,6 +22,14 @@ const config: RuntimeConfig = {
 
 function translated(source: string, kind: SelectionKind): TranslationPayload {
   return { kind, source, meaningZh: '考虑到；把……纳入考虑', keyPhrases: [] };
+}
+
+async function clickTranslate(): Promise<void> {
+  document.dispatchEvent(new Event('pointerup', { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 120));
+  const button = document.getElementById('peeklish-toolbar')?.shadowRoot?.querySelector('[aria-label="翻译"]');
+  if (!(button instanceof HTMLButtonElement)) throw new Error('toolbar missing');
+  button.click();
 }
 
 async function until(ready: () => boolean, timeoutMs = 3000): Promise<void> {
@@ -205,8 +214,8 @@ describe('reader', () => {
     });
 
     await new Promise((resolve) => setTimeout(resolve, 0));
-    document.dispatchEvent(new Event('pointerup', { bubbles: true }));
-    await new Promise((resolve) => setTimeout(resolve, 120));
+    await clickTranslate();
+    await new Promise((resolve) => setTimeout(resolve, 20));
     const card = document.getElementById('peeklish-root')?.shadowRoot?.querySelector('.card') as HTMLElement | undefined;
     expect(card?.hidden).toBe(false);
     expect(card?.textContent).toContain('考虑到');
@@ -250,8 +259,8 @@ describe('reader', () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
     document.getSelection()?.addRange(range);
-    document.dispatchEvent(new Event('pointerup', { bubbles: true }));
-    await new Promise((resolve) => setTimeout(resolve, 120));
+    await clickTranslate();
+    await new Promise((resolve) => setTimeout(resolve, 20));
     expect(document.body.textContent).not.toContain('Extension context invalidated');
     expect(document.getElementById('peeklish-root')).toBeNull();
     broken.dispose();
@@ -299,7 +308,7 @@ describe('reader', () => {
       },
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
-    document.dispatchEvent(new Event('pointerup', { bubbles: true }));
+    await clickTranslate();
     const card = () => document.getElementById('peeklish-root')?.shadowRoot?.querySelector('.card') as HTMLElement | undefined;
     await until(() => Boolean(card()?.textContent?.includes('考虑到')));
     expect(card()?.textContent).toContain('谷歌翻译');
@@ -345,7 +354,7 @@ describe('reader', () => {
       },
     });
     reader.dispose();
-    document.dispatchEvent(new Event('pointerup', { bubbles: true }));
+    await clickTranslate();
     await until(() => Boolean(document.getElementById('peeklish-root')?.shadowRoot?.textContent?.includes('只翻译英文')));
     expect(chineseCalls).toBe(0);
     guarded.dispose();
@@ -618,6 +627,53 @@ describe('reader', () => {
     await until(() => seen.some((text) => text.includes('at least one')));
     expect(seen.filter((text) => text.includes('take into account'))).toHaveLength(1);
     reader.dispose();
+  });
+});
+
+describe('excerpt anchors', () => {
+  it('keeps a quote findable after a paragraph is inserted above it', () => {
+    document.body.innerHTML =
+      '<main><h1>Structured Concurrency</h1><p>Intro paragraph for context here.</p><p>A task is a unit of work that can run asynchronously.</p></main>';
+    const paragraph = document.querySelectorAll('main p')[1];
+    const node = paragraph.firstChild as Text;
+    const range = document.createRange();
+    range.setStart(node, 0);
+    range.setEnd(node, node.data.length);
+    const anchor = captureAnchor(document, range);
+    expect(anchor?.heading).toBe('Structured Concurrency');
+    expect(anchor?.exact).toContain('unit of work');
+    const extra = document.createElement('p');
+    extra.textContent = 'Inserted above the original paragraph.';
+    paragraph.before(extra);
+    const restored = restoreAnchor(document, anchor!);
+    expect(restored.status).toBe('ok');
+    expect(restored.range?.toString()).toContain('unit of work');
+  });
+
+  it('does not jump when the same sentence remains in two places', () => {
+    document.body.innerHTML = '<main><p>Intro paragraph for context here.</p><p>same sentence here.</p></main>';
+    const paragraph = document.querySelectorAll('main p')[1];
+    const node = paragraph.firstChild as Text;
+    const range = document.createRange();
+    range.setStart(node, 0);
+    range.setEnd(node, node.data.length);
+    const anchor = captureAnchor(document, range);
+    document.body.innerHTML = '<main><div><span>same sentence here.</span></div><div><span>same sentence here.</span></div></main>';
+    const restored = restoreAnchor(document, anchor!);
+    expect(restored.status).toBe('ambiguous');
+    expect(restored.range).toBeNull();
+  });
+
+  it('keeps code indentation', () => {
+    document.body.innerHTML = '<main><pre><code class="language-swift">func loadData() async {\n    async let user = fetchUser()\n}</code></pre></main>';
+    const node = document.querySelector('code')?.firstChild as Text;
+    const range = document.createRange();
+    range.setStart(node, 0);
+    range.setEnd(node, node.data.length);
+    const anchor = captureAnchor(document, range);
+    expect(anchor?.kind).toBe('code');
+    expect(anchor?.lang).toBe('swift');
+    expect(anchor?.exact).toContain('    async let user');
   });
 });
 

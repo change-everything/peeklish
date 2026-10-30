@@ -1,5 +1,7 @@
 const DB_NAME = 'peeklish';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
+
+export type StoreName = 'expressions' | 'analysisCache' | 'translationCache' | 'documents' | 'annotations' | 'notes';
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -18,6 +20,20 @@ function openDb(): Promise<IDBDatabase> {
           store.createIndex('expiresAt', 'expiresAt');
         }
       }
+      if (!db.objectStoreNames.contains('documents')) {
+        const store = db.createObjectStore('documents', { keyPath: 'id' });
+        store.createIndex('lastOpenedAt', 'lastOpenedAt');
+      }
+      if (!db.objectStoreNames.contains('annotations')) {
+        const store = db.createObjectStore('annotations', { keyPath: 'id' });
+        store.createIndex('docId', 'docId');
+      }
+      if (!db.objectStoreNames.contains('notes')) {
+        const store = db.createObjectStore('notes', { keyPath: 'id' });
+        store.createIndex('docId', 'docId');
+        store.createIndex('annotationId', 'annotationId');
+        store.createIndex('updatedAt', 'updatedAt');
+      }
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
@@ -25,7 +41,7 @@ function openDb(): Promise<IDBDatabase> {
 }
 
 export function withStore<T>(
-  name: 'expressions' | 'analysisCache' | 'translationCache',
+  name: StoreName,
   mode: IDBTransactionMode,
   fn: (store: IDBObjectStore) => IDBRequest<T>,
 ): Promise<T> {

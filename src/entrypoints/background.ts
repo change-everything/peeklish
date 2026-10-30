@@ -1,5 +1,6 @@
 import { disableRemovedOrigins, injectEnabledTabs, syncRegisteredScripts } from '../background/register-scripts';
 import { handleMessage } from '../background/handle';
+import { sidePanelApi } from '../chrome/side-panel';
 import { errorText } from '../shared/error-text';
 
 async function lockStorage(): Promise<void> {
@@ -9,6 +10,7 @@ async function lockStorage(): Promise<void> {
 
 async function boot(): Promise<void> {
   await lockStorage();
+  await sidePanelApi()?.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => undefined);
   await syncRegisteredScripts();
   await injectEnabledTabs();
 }
@@ -31,6 +33,17 @@ export default defineBackground(() => {
 
   browser.permissions.onRemoved.addListener((removed) => {
     void disableRemovedOrigins(removed.origins ?? []);
+  });
+
+  browser.commands.onCommand.addListener((command) => {
+    if (command !== 'quick-excerpt') return;
+    void browser.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
+      const tabId = tabs[0]?.id;
+      if (tabId == null) return;
+      const opening = sidePanelApi()?.open({ tabId }).catch(() => undefined);
+      void browser.tabs.sendMessage(tabId, { type: 'QUICK_EXCERPT' }).catch(() => undefined);
+      return opening;
+    });
   });
 
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
